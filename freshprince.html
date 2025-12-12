@@ -198,7 +198,6 @@
     let elapsedSeconds = 0;
     let plannedDuration = 0;
     let activeProfile = null;
-    let isPaused = false;
 
     function renderBeans() {
       beanRows.innerHTML = '';
@@ -281,7 +280,6 @@
       elapsedSeconds = 0;
       plannedDuration = 0;
       activeProfile = null;
-      isPaused = false;
       progressBar.style.width = '0%';
       stageText.textContent = 'Idle';
       elapsedEl.textContent = '0:00';
@@ -289,22 +287,14 @@
       eventGrid.innerHTML = '';
       weightSummary.textContent = 'Awaiting weights…';
       weightSummary.classList.remove('weight-summary--alert');
-      if (!preserveWeights) {
-        greenWeightInput.value = '';
-        roastedWeightInput.value = '';
-      }
-      if (preserveWeights) {
-        updateWeightSummary();
-      }
-
-      updateControlStates();
+      greenWeightInput.value = '';
+      roastedWeightInput.value = '';
     }
 
     function runRoast(profile) {
       resetSession({ preserveWeights: true });
       plannedDuration = Math.round((Number(profile.firstCrack) + Number(profile.development)) * 60);
       activeProfile = profile;
-      isPaused = false;
       chargeDisplay.textContent = `${profile.chargeTemp}°C`;
       statusText.textContent = `${profile.bean.name} • Charging`;
       stageText.textContent = 'Charging';
@@ -376,6 +366,14 @@
           updateControlStates();
         }
       }, 1000);
+    }
+
+    function pauseRoast() {
+      if (!activeProfile) return;
+      stopTimer();
+      stageText.textContent = 'Paused';
+      statusText.textContent = `${activeProfile.bean.name} • Paused at ${formatTime(elapsedSeconds)}`;
+      addEvent('Paused', formatTime(elapsedSeconds));
     }
 
     function markStage(label, stageName) {
