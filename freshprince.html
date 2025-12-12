@@ -1,32 +1,292 @@
 <!DOCTYPE html>
-<html>
-	<head>
-		<meta charset="UTF-8">
-		<title>The Fresh Prince of Bel-Air</title>
-		<link rel="stylesheet" type="text/css" href="mystyle.css">
-	</head>
-	<body> 
-		<h1>The Fresh Prince of Bel-Air</h1>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RoastMaster | Coffee Roasting Planner</title>
+  <link rel="stylesheet" type="text/css" href="mystyle.css">
+</head>
+<body>
+  <header class="hero">
+    <div class="hero__content">
+      <p class="eyebrow">Coffee Lab</p>
+      <h1>RoastMaster</h1>
+      <p class="lede">Plan, track, and log every roast with a calm workspace designed for focused roasting sessions.</p>
+      <div class="hero__actions">
+        <button id="start-roast" class="btn btn--primary">Start Roast</button>
+        <button id="reset-session" class="btn btn--ghost">Reset Session</button>
+      </div>
+    </div>
+    <div class="hero__illustration">
+      <div class="drum">
+        <div class="bean"></div>
+        <div class="bean bean--2"></div>
+        <div class="bean bean--3"></div>
+      </div>
+      <p class="status" id="session-status">Idle • waiting to charge</p>
+    </div>
+  </header>
 
-		<p>From western Philadelphia I hail
-		where in my youth I'd play upon the green
-		'til - rue the day! -I found myself assail'd
-		by ruffians contemptible and mean.
-		Although the spat was trivial and brief,
-		it wounded my dear mother deep within;
-		and so, to give her conscience sweet relief,
-		she sent me forth to live amongst her kin.
-		When to my port of call I'd been conveyed,
-		I came upon a coachman most unique;
-		and yet, I simply took the trip and paid,
-		despite his cab's decor and fresh mystique.
-		I survey all the land with princely mien
-		in fair Bel-Air, where I do lay my scene.</p>
+  <main class="grid">
+    <section class="panel" aria-labelledby="inventory-title">
+      <div class="panel__header">
+        <div>
+          <p class="eyebrow">Inventory</p>
+          <h2 id="inventory-title">Bean library</h2>
+        </div>
+        <button class="btn btn--small" id="add-bean">Add bean</button>
+      </div>
+      <div class="table">
+        <div class="table__head">
+          <span>Bean</span>
+          <span>Origin</span>
+          <span>Weight (g)</span>
+        </div>
+        <div id="bean-rows"></div>
+      </div>
+    </section>
 
-		<a href="https://en.wikipedia.org/wiki/William_Shakespeare">Shakespeares Wiki Page</a>
+    <section class="panel" aria-labelledby="roast-planner-title">
+      <div class="panel__header">
+        <div>
+          <p class="eyebrow">Planner</p>
+          <h2 id="roast-planner-title">Roast profile</h2>
+        </div>
+      </div>
+      <form id="roast-form" class="form">
+        <label>
+          Bean selection
+          <select id="bean-select"></select>
+        </label>
+        <label>
+          Charge temperature (°C)
+          <input type="number" id="charge-temp" min="160" max="230" value="200" required>
+        </label>
+        <label>
+          First crack target (minutes)
+          <input type="number" id="first-crack" min="5" max="12" step="0.1" value="8.5" required>
+        </label>
+        <label>
+          Development time (minutes)
+          <input type="number" id="development" min="1" max="5" step="0.1" value="2.0" required>
+        </label>
+        <label>
+          Notes
+          <textarea id="notes" rows="3" placeholder="Flavor goals, venting notes, charge adjustments..."></textarea>
+        </label>
+        <button type="submit" class="btn btn--primary">Save profile</button>
+      </form>
+    </section>
 
-	</body>
+    <section class="panel" aria-labelledby="roast-log-title">
+      <div class="panel__header">
+        <div>
+          <p class="eyebrow">Session</p>
+          <h2 id="roast-log-title">Roast log</h2>
+        </div>
+      </div>
+      <div class="log" id="roast-log"></div>
+    </section>
 
+    <section class="panel" aria-labelledby="live-roast-title">
+      <div class="panel__header">
+        <div>
+          <p class="eyebrow">Live</p>
+          <h2 id="live-roast-title">Live roast tracker</h2>
+        </div>
+      </div>
+      <div class="tracker">
+        <div class="progress">
+          <div id="progress-bar" class="progress__bar" style="width: 0%"></div>
+        </div>
+        <div class="metrics">
+          <div>
+            <p class="eyebrow">Stage</p>
+            <p id="stage-text" class="metric">Idle</p>
+          </div>
+          <div>
+            <p class="eyebrow">Elapsed</p>
+            <p id="elapsed" class="metric">0:00</p>
+          </div>
+          <div>
+            <p class="eyebrow">Charge</p>
+            <p id="charge-display" class="metric">200°C</p>
+          </div>
+        </div>
+        <div class="event-grid" id="event-grid"></div>
+      </div>
+    </section>
+  </main>
 
+  <template id="bean-row-template">
+    <div class="table__row">
+      <span class="bean-name"></span>
+      <span class="bean-origin"></span>
+      <span class="bean-weight"></span>
+    </div>
+  </template>
 
+  <template id="log-entry-template">
+    <article class="log__entry">
+      <header>
+        <p class="eyebrow log__bean"></p>
+        <p class="log__title"></p>
+      </header>
+      <p class="log__meta"></p>
+      <p class="log__notes"></p>
+    </article>
+  </template>
+
+  <script>
+    const beanRows = document.getElementById('bean-rows');
+    const beanSelect = document.getElementById('bean-select');
+    const beanRowTemplate = document.getElementById('bean-row-template');
+    const logTemplate = document.getElementById('log-entry-template');
+    const roastLog = document.getElementById('roast-log');
+    const eventGrid = document.getElementById('event-grid');
+
+    const statusText = document.getElementById('session-status');
+    const stageText = document.getElementById('stage-text');
+    const elapsedEl = document.getElementById('elapsed');
+    const chargeDisplay = document.getElementById('charge-display');
+    const progressBar = document.getElementById('progress-bar');
+
+    const startRoastBtn = document.getElementById('start-roast');
+    const resetSessionBtn = document.getElementById('reset-session');
+    const roastForm = document.getElementById('roast-form');
+
+    let beans = [
+      { name: 'Ethiopia Yirgacheffe', origin: 'Ethiopia', weight: 1200 },
+      { name: 'Guatemala Huehuetenango', origin: 'Guatemala', weight: 900 },
+      { name: 'Colombia Huila', origin: 'Colombia', weight: 750 }
+    ];
+
+    let activeTimer = null;
+    let elapsedSeconds = 0;
+    let plannedDuration = 0;
+
+    function renderBeans() {
+      beanRows.innerHTML = '';
+      beanSelect.innerHTML = '';
+      beans.forEach((bean, index) => {
+        const row = beanRowTemplate.content.cloneNode(true);
+        row.querySelector('.bean-name').textContent = bean.name;
+        row.querySelector('.bean-origin').textContent = bean.origin;
+        row.querySelector('.bean-weight').textContent = `${bean.weight}g`;
+        beanRows.appendChild(row);
+
+        const option = document.createElement('option');
+        option.value = index;
+        option.textContent = bean.name;
+        beanSelect.appendChild(option);
+      });
+    }
+
+    function logRoast({ bean, chargeTemp, firstCrack, development, notes }) {
+      const entry = logTemplate.content.cloneNode(true);
+      entry.querySelector('.log__bean').textContent = bean.name;
+      entry.querySelector('.log__title').textContent = `Charge ${chargeTemp}°C → FC ${firstCrack}m → Dev ${development}m`;
+      const totalTime = (Number(firstCrack) + Number(development)).toFixed(1);
+      entry.querySelector('.log__meta').textContent = `Total time ${totalTime} minutes • ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+      entry.querySelector('.log__notes').textContent = notes || 'No additional notes.';
+      roastLog.prepend(entry);
+    }
+
+    function addEvent(label, time) {
+      const event = document.createElement('div');
+      event.className = 'event';
+      event.innerHTML = `<span>${label}</span><strong>${time}</strong>`;
+      eventGrid.prepend(event);
+    }
+
+    function formatTime(totalSeconds) {
+      const minutes = Math.floor(totalSeconds / 60).toString();
+      const seconds = (totalSeconds % 60).toString().padStart(2, '0');
+      return `${minutes}:${seconds}`;
+    }
+
+    function stopTimer() {
+      if (activeTimer) {
+        clearInterval(activeTimer);
+        activeTimer = null;
+      }
+    }
+
+    function resetSession() {
+      stopTimer();
+      elapsedSeconds = 0;
+      plannedDuration = 0;
+      progressBar.style.width = '0%';
+      stageText.textContent = 'Idle';
+      elapsedEl.textContent = '0:00';
+      statusText.textContent = 'Idle • waiting to charge';
+      eventGrid.innerHTML = '';
+    }
+
+    function runRoast(profile) {
+      stopTimer();
+      elapsedSeconds = 0;
+      plannedDuration = Math.round((Number(profile.firstCrack) + Number(profile.development)) * 60);
+      chargeDisplay.textContent = `${profile.chargeTemp}°C`;
+      statusText.textContent = `${profile.bean.name} • Charging`;
+      stageText.textContent = 'Charging';
+      addEvent('Charge', '0:00');
+
+      activeTimer = setInterval(() => {
+        elapsedSeconds += 1;
+        const pct = Math.min((elapsedSeconds / plannedDuration) * 100, 100);
+        progressBar.style.width = `${pct}%`;
+        elapsedEl.textContent = formatTime(elapsedSeconds);
+
+        const elapsedMinutes = elapsedSeconds / 60;
+        if (elapsedMinutes >= profile.firstCrack && stageText.textContent !== 'First crack') {
+          stageText.textContent = 'First crack';
+          statusText.textContent = `${profile.bean.name} • First crack underway`;
+          addEvent('First crack', formatTime(elapsedSeconds));
+        }
+
+        if (elapsedMinutes >= profile.firstCrack + profile.development) {
+          stageText.textContent = 'Drop';
+          statusText.textContent = `${profile.bean.name} • Drop now`;
+          addEvent('Drop', formatTime(elapsedSeconds));
+          stopTimer();
+        }
+      }, 1000);
+    }
+
+    document.getElementById('add-bean').addEventListener('click', () => {
+      const name = prompt('Bean name');
+      const origin = prompt('Origin');
+      const weight = Number(prompt('Weight in grams', '500'));
+      if (!name || !origin || Number.isNaN(weight)) return;
+      beans = [...beans, { name, origin, weight }];
+      renderBeans();
+    });
+
+    roastForm.addEventListener('submit', (event) => {
+      event.preventDefault();
+      const bean = beans[Number(beanSelect.value)];
+      const chargeTemp = Number(document.getElementById('charge-temp').value);
+      const firstCrack = Number(document.getElementById('first-crack').value);
+      const development = Number(document.getElementById('development').value);
+      const notes = document.getElementById('notes').value.trim();
+
+      logRoast({ bean, chargeTemp, firstCrack, development, notes });
+      runRoast({ bean, chargeTemp, firstCrack, development });
+    });
+
+    startRoastBtn.addEventListener('click', () => {
+      const bean = beans[Number(beanSelect.value)] || beans[0];
+      const chargeTemp = Number(document.getElementById('charge-temp').value);
+      const firstCrack = Number(document.getElementById('first-crack').value);
+      const development = Number(document.getElementById('development').value);
+      runRoast({ bean, chargeTemp, firstCrack, development });
+    });
+
+    resetSessionBtn.addEventListener('click', resetSession);
+
+    renderBeans();
+    resetSession();
+  </script>
+</body>
 </html>
