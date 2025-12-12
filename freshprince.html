@@ -14,6 +14,7 @@
       <p class="lede">Plan, track, and log every roast with a calm workspace designed for focused roasting sessions.</p>
       <div class="hero__actions">
         <button id="start-roast" class="btn btn--primary">Start Roast</button>
+        <button id="stop-roast" class="btn btn--ghost">Stop Roast</button>
         <button id="reset-session" class="btn btn--ghost">Reset Session</button>
       </div>
     </div>
@@ -99,6 +100,30 @@
         <div class="progress">
           <div id="progress-bar" class="progress__bar" style="width: 0%"></div>
         </div>
+        <div class="controls-grid">
+          <div class="control-group">
+            <p class="eyebrow">Stage markers</p>
+            <div class="chip-row">
+              <button id="mark-yellow" type="button" class="btn btn--chip">Yellowing</button>
+              <button id="mark-first-crack" type="button" class="btn btn--chip">First crack</button>
+              <button id="mark-second-crack" type="button" class="btn btn--chip">Second crack</button>
+            </div>
+          </div>
+          <div class="control-group">
+            <p class="eyebrow">Roast weight</p>
+            <div class="weight-grid">
+              <label>
+                Green weight (g)
+                <input type="number" id="green-weight" min="0" step="0.1" placeholder="Enter before roasting">
+              </label>
+              <label>
+                Roasted weight (g)
+                <input type="number" id="roasted-weight" min="0" step="0.1" placeholder="Enter after roasting">
+              </label>
+            </div>
+            <p id="weight-summary" class="weight-summary">Awaiting weights…</p>
+          </div>
+        </div>
         <div class="metrics">
           <div>
             <p class="eyebrow">Stage</p>
@@ -152,8 +177,16 @@
     const progressBar = document.getElementById('progress-bar');
 
     const startRoastBtn = document.getElementById('start-roast');
+    const stopRoastBtn = document.getElementById('stop-roast');
     const resetSessionBtn = document.getElementById('reset-session');
     const roastForm = document.getElementById('roast-form');
+    const markYellowBtn = document.getElementById('mark-yellow');
+    const markFirstCrackBtn = document.getElementById('mark-first-crack');
+    const markSecondCrackBtn = document.getElementById('mark-second-crack');
+
+    const greenWeightInput = document.getElementById('green-weight');
+    const roastedWeightInput = document.getElementById('roasted-weight');
+    const weightSummary = document.getElementById('weight-summary');
 
     let beans = [
       { name: 'Ethiopia Yirgacheffe', origin: 'Ethiopia', weight: 1200 },
@@ -164,6 +197,8 @@
     let activeTimer = null;
     let elapsedSeconds = 0;
     let plannedDuration = 0;
+    let activeProfile = null;
+    let isPaused = false;
 
     function renderBeans() {
       beanRows.innerHTML = '';
@@ -199,6 +234,29 @@
       eventGrid.prepend(event);
     }
 
+    function updateWeightSummary() {
+      const green = Number(greenWeightInput.value);
+      const roasted = Number(roastedWeightInput.value);
+
+      if (Number.isNaN(green) || Number.isNaN(roasted) || green <= 0 || roasted <= 0) {
+        weightSummary.textContent = 'Awaiting weights…';
+        weightSummary.classList.remove('weight-summary--alert');
+        return;
+      }
+
+      const lossPct = ((green - roasted) / green) * 100;
+      const rounded = lossPct.toFixed(1);
+      let classification = 'Light';
+      if (lossPct >= 17) {
+        classification = 'Dark';
+      } else if (lossPct >= 14) {
+        classification = 'Medium';
+      }
+
+      weightSummary.textContent = `Weight loss ${rounded}% • ${classification} roast`;
+      weightSummary.classList.add('weight-summary--alert');
+    }
+
     function formatTime(totalSeconds) {
       const minutes = Math.floor(totalSeconds / 60).toString();
       const seconds = (totalSeconds % 60).toString().padStart(2, '0');
@@ -212,25 +270,46 @@
       }
     }
 
-    function resetSession() {
+    function updateControlStates() {
+      const hasActiveProfile = Boolean(activeProfile);
+      startRoastBtn.textContent = hasActiveProfile && isPaused ? 'Resume Roast' : 'Start Roast';
+      stopRoastBtn.disabled = !hasActiveProfile || isPaused;
+    }
+
+    function resetSession({ preserveWeights = false } = {}) {
       stopTimer();
       elapsedSeconds = 0;
       plannedDuration = 0;
+      activeProfile = null;
+      isPaused = false;
       progressBar.style.width = '0%';
       stageText.textContent = 'Idle';
       elapsedEl.textContent = '0:00';
       statusText.textContent = 'Idle • waiting to charge';
       eventGrid.innerHTML = '';
+      weightSummary.textContent = 'Awaiting weights…';
+      weightSummary.classList.remove('weight-summary--alert');
+      if (!preserveWeights) {
+        greenWeightInput.value = '';
+        roastedWeightInput.value = '';
+      }
+      if (preserveWeights) {
+        updateWeightSummary();
+      }
+
+      updateControlStates();
     }
 
     function runRoast(profile) {
-      stopTimer();
-      elapsedSeconds = 0;
+      resetSession({ preserveWeights: true });
       plannedDuration = Math.round((Number(profile.firstCrack) + Number(profile.development)) * 60);
+      activeProfile = profile;
+      isPaused = false;
       chargeDisplay.textContent = `${profile.chargeTemp}°C`;
       statusText.textContent = `${profile.bean.name} • Charging`;
       stageText.textContent = 'Charging';
       addEvent('Charge', '0:00');
+      updateControlStates();
 
       activeTimer = setInterval(() => {
         elapsedSeconds += 1;
@@ -250,8 +329,60 @@
           statusText.textContent = `${profile.bean.name} • Drop now`;
           addEvent('Drop', formatTime(elapsedSeconds));
           stopTimer();
+          activeProfile = null;
+          isPaused = false;
+          updateControlStates();
         }
       }, 1000);
+    }
+
+    function pauseRoast() {
+      if (!activeProfile) return;
+      stopTimer();
+      isPaused = true;
+      stageText.textContent = 'Stopped';
+      statusText.textContent = `${activeProfile.bean.name} • Stopped at ${formatTime(elapsedSeconds)}`;
+      addEvent('Stopped', formatTime(elapsedSeconds));
+      updateControlStates();
+    }
+
+    function resumeRoast() {
+      if (!activeProfile || !isPaused) return;
+      isPaused = false;
+      statusText.textContent = `${activeProfile.bean.name} • Resumed at ${formatTime(elapsedSeconds)}`;
+      stageText.textContent = 'Resuming';
+      addEvent('Resumed', formatTime(elapsedSeconds));
+      updateControlStates();
+
+      activeTimer = setInterval(() => {
+        elapsedSeconds += 1;
+        const pct = Math.min((elapsedSeconds / plannedDuration) * 100, 100);
+        progressBar.style.width = `${pct}%`;
+        elapsedEl.textContent = formatTime(elapsedSeconds);
+
+        const elapsedMinutes = elapsedSeconds / 60;
+        if (elapsedMinutes >= activeProfile.firstCrack && stageText.textContent !== 'First crack') {
+          stageText.textContent = 'First crack';
+          statusText.textContent = `${activeProfile.bean.name} • First crack underway`;
+          addEvent('First crack', formatTime(elapsedSeconds));
+        }
+
+        if (elapsedMinutes >= activeProfile.firstCrack + activeProfile.development) {
+          stageText.textContent = 'Drop';
+          statusText.textContent = `${activeProfile.bean.name} • Drop now`;
+          addEvent('Drop', formatTime(elapsedSeconds));
+          stopTimer();
+          activeProfile = null;
+          updateControlStates();
+        }
+      }, 1000);
+    }
+
+    function markStage(label, stageName) {
+      if (!activeProfile) return;
+      stageText.textContent = stageName;
+      statusText.textContent = `${activeProfile.bean.name} • ${stageName}`;
+      addEvent(label, formatTime(elapsedSeconds));
     }
 
     document.getElementById('add-bean').addEventListener('click', () => {
@@ -276,6 +407,11 @@
     });
 
     startRoastBtn.addEventListener('click', () => {
+      if (isPaused && activeProfile) {
+        resumeRoast();
+        return;
+      }
+
       const bean = beans[Number(beanSelect.value)] || beans[0];
       const chargeTemp = Number(document.getElementById('charge-temp').value);
       const firstCrack = Number(document.getElementById('first-crack').value);
@@ -283,7 +419,15 @@
       runRoast({ bean, chargeTemp, firstCrack, development });
     });
 
+    stopRoastBtn.addEventListener('click', pauseRoast);
     resetSessionBtn.addEventListener('click', resetSession);
+
+    markYellowBtn.addEventListener('click', () => markStage('Yellow', 'Yellowing'));
+    markFirstCrackBtn.addEventListener('click', () => markStage('First crack', 'First crack'));
+    markSecondCrackBtn.addEventListener('click', () => markStage('Second crack', 'Second crack'));
+
+    greenWeightInput.addEventListener('input', updateWeightSummary);
+    roastedWeightInput.addEventListener('input', updateWeightSummary);
 
     renderBeans();
     resetSession();
