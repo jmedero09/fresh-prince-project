@@ -269,7 +269,13 @@
       }
     }
 
-    function resetSession() {
+    function updateControlStates() {
+      const hasActiveProfile = Boolean(activeProfile);
+      startRoastBtn.textContent = hasActiveProfile && isPaused ? 'Resume Roast' : 'Start Roast';
+      stopRoastBtn.disabled = !hasActiveProfile || isPaused;
+    }
+
+    function resetSession({ preserveWeights = false } = {}) {
       stopTimer();
       elapsedSeconds = 0;
       plannedDuration = 0;
@@ -286,14 +292,14 @@
     }
 
     function runRoast(profile) {
-      stopTimer();
-      elapsedSeconds = 0;
+      resetSession({ preserveWeights: true });
       plannedDuration = Math.round((Number(profile.firstCrack) + Number(profile.development)) * 60);
       activeProfile = profile;
       chargeDisplay.textContent = `${profile.chargeTemp}°C`;
       statusText.textContent = `${profile.bean.name} • Charging`;
       stageText.textContent = 'Charging';
       addEvent('Charge', '0:00');
+      updateControlStates();
 
       activeTimer = setInterval(() => {
         elapsedSeconds += 1;
@@ -313,6 +319,51 @@
           statusText.textContent = `${profile.bean.name} • Drop now`;
           addEvent('Drop', formatTime(elapsedSeconds));
           stopTimer();
+          activeProfile = null;
+          isPaused = false;
+          updateControlStates();
+        }
+      }, 1000);
+    }
+
+    function pauseRoast() {
+      if (!activeProfile) return;
+      stopTimer();
+      isPaused = true;
+      stageText.textContent = 'Stopped';
+      statusText.textContent = `${activeProfile.bean.name} • Stopped at ${formatTime(elapsedSeconds)}`;
+      addEvent('Stopped', formatTime(elapsedSeconds));
+      updateControlStates();
+    }
+
+    function resumeRoast() {
+      if (!activeProfile || !isPaused) return;
+      isPaused = false;
+      statusText.textContent = `${activeProfile.bean.name} • Resumed at ${formatTime(elapsedSeconds)}`;
+      stageText.textContent = 'Resuming';
+      addEvent('Resumed', formatTime(elapsedSeconds));
+      updateControlStates();
+
+      activeTimer = setInterval(() => {
+        elapsedSeconds += 1;
+        const pct = Math.min((elapsedSeconds / plannedDuration) * 100, 100);
+        progressBar.style.width = `${pct}%`;
+        elapsedEl.textContent = formatTime(elapsedSeconds);
+
+        const elapsedMinutes = elapsedSeconds / 60;
+        if (elapsedMinutes >= activeProfile.firstCrack && stageText.textContent !== 'First crack') {
+          stageText.textContent = 'First crack';
+          statusText.textContent = `${activeProfile.bean.name} • First crack underway`;
+          addEvent('First crack', formatTime(elapsedSeconds));
+        }
+
+        if (elapsedMinutes >= activeProfile.firstCrack + activeProfile.development) {
+          stageText.textContent = 'Drop';
+          statusText.textContent = `${activeProfile.bean.name} • Drop now`;
+          addEvent('Drop', formatTime(elapsedSeconds));
+          stopTimer();
+          activeProfile = null;
+          updateControlStates();
         }
       }, 1000);
     }
@@ -354,6 +405,11 @@
     });
 
     startRoastBtn.addEventListener('click', () => {
+      if (isPaused && activeProfile) {
+        resumeRoast();
+        return;
+      }
+
       const bean = beans[Number(beanSelect.value)] || beans[0];
       const chargeTemp = Number(document.getElementById('charge-temp').value);
       const firstCrack = Number(document.getElementById('first-crack').value);
